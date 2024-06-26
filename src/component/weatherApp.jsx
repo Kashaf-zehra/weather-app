@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import {
   Box,
   Paper,
@@ -12,6 +11,12 @@ import {
 import { Search as SearchIcon } from '@mui/icons-material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFrown } from '@fortawesome/free-solid-svg-icons';
+import DailyForecast from './tenDaysForecast';
+import {
+  fetchTenDayForecast,
+  fetchTodayForecast,
+} from '../utils/fetchTenDayForecast';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const WeatherUpdate = () => {
   const [input, setInput] = useState('');
@@ -20,8 +25,7 @@ const WeatherUpdate = () => {
     data: {},
     error: false,
   });
-  const [tenDayForecast, setTenDayForecast] = useState([]);
-
+  const queryClient = useQueryClient();
   const toDateFunction = () => {
     const months = [
       'January',
@@ -52,56 +56,95 @@ const WeatherUpdate = () => {
     }`;
     return date;
   };
+
   const search = async (event, isButtonClick = false) => {
     if (isButtonClick || (event.key && event.key === 'Enter')) {
       event.preventDefault();
       setInput('');
       setWeather({ ...weather, loading: true });
-      const url = 'https://api.openweathermap.org/data/2.5/weather';
-      const api_key = 'f00c38e0279b7bc85480c3fe775d518c';
-      await axios
-        .get(url, {
-          params: {
-            q: input,
-            units: 'metric',
-            appid: api_key,
-          },
-        })
-        .then((res) => {
-          setWeather({ data: res.data, loading: false, error: false });
-          fetchTenDayForecast(res.data.coord.lat, res.data.coord.lon);
-        })
-        .catch((error) => {
-          setWeather({ ...weather, data: {}, error: true });
-          setInput('');
-          console.log('error', error);
+      try {
+        const weatherData = await fetchTodayForecast(input);
+        setWeather({ data: weatherData, loading: false, error: false });
+        queryClient.prefetchQuery({
+          queryKey: [
+            'tenDayForecast',
+            weatherData.coord.lat,
+            weatherData.coord.lon,
+          ],
+          queryFn: () =>
+            fetchTenDayForecast(weatherData.coord.lat, weatherData.coord.lon),
         });
+      } catch (error) {
+        setWeather({ ...weather, data: {}, error: true });
+        console.error('Error fetching weather data', error);
+      }
     }
   };
-  const fetchTenDayForecast = async (lat, lon) => {
-    const url = `https://api.openweathermap.org/data/2.5/onecall`;
-    const api_key = 'f00c38e0279b7bc85480c3fe775d518c';
-    const exclude = 'current,minutely,hourly';
-    await axios
-      .get(url, {
-        params: {
-          lat: lat,
-          lon: lon,
-          exclude: exclude,
-          units: 'metric',
-          appid: api_key,
-        },
-      })
-      .then((res) => {
-        if (res.data && res.data.daily) {
-          setTenDayForecast(res.data.daily.slice(0, 10));
-        }
-      })
-      .catch((error) => {
-        console.log('ten-day forecast error', error);
-        setTenDayForecast([]);
-      });
-  };
+  const { data: tenDayForecast = [] } = useQuery({
+    queryKey: [
+      'tenDayForecast',
+      weather.data.coord?.lat,
+      weather.data.coord?.lon,
+    ],
+    queryFn: () =>
+      fetchTenDayForecast(weather.data.coord.lat, weather.data.coord.lon),
+    enabled: !!weather.data.coord,
+  });
+
+  // const search = async (event, isButtonClick = false) => {
+  //   if (isButtonClick || (event.key && event.key === 'Enter')) {
+  //     event.preventDefault();
+  //     setInput('');
+  //     setWeather({ ...weather, loading: true });
+  //     const url = `${today_forecast}`;
+  //     const api_key = 'f00c38e0279b7bc85480c3fe775d518c';
+  //     await axios
+  //       .get(url, {
+  //         params: {
+  //           q: input,
+  //           units: 'metric',
+  //           appid: api_key,
+  //         },
+  //       })
+  //       .then((res) => {
+  //         setWeather({ data: res.data, loading: false, error: false });
+  //         fetchTenDayForecast(
+  //           res.data.coord.lat,
+  //           res.data.coord.lon,
+  //           setTenDayForecast
+  //         );
+  //       })
+  //       .catch((error) => {
+  //         setWeather({ ...weather, data: {}, error: true });
+  //         setInput('');
+  //         console.log('error', error);
+  //       });
+  //   }
+  // };
+  // const fetchTenDayForecast = async (lat, lon) => {
+  //   const url = `${tenDays_forecast}`;
+  //   const api_key = api_weather_key;
+  //   const exclude = 'current,minutely,hourly';
+  //   await axios
+  //     .get(url, {
+  //       params: {
+  //         lat: lat,
+  //         lon: lon,
+  //         exclude: exclude,
+  //         units: 'metric',
+  //         appid: api_key,
+  //       },
+  //     })
+  //     .then((res) => {
+  //       if (res.data && res.data.daily) {
+  //         setTenDayForecast(res.data.daily.slice(0, 10));
+  //       }
+  //     })
+  //     .catch((error) => {
+  //       console.log('ten-day forecast error', error);
+  //       setTenDayForecast([]);
+  //     });
+  // };
   return (
     <Box
       component={Paper}
@@ -202,76 +245,7 @@ const WeatherUpdate = () => {
           </Box>
         )}
       </Box>
-      {tenDayForecast.length > 0 && (
-        <Box
-          sx={{
-            width: '90%',
-            padding: '10px',
-          }}
-          mt={4}
-        >
-          <Typography
-            variant='h4'
-            sx={{
-              textAlign: 'center',
-              fontFamily: 'cursive',
-              paddingBottom: '15px',
-            }}
-          >
-            10-Day Forecast
-          </Typography>
-          <Box
-            sx={{
-              display: 'flex',
-              overflow: 'auto',
-              scrollbarWidth: 'thin',
-              scrollbarColor: 'transparent transparent',
-              '&::-webkit-scrollbar': {
-                display: 'none',
-              },
-            }}
-          >
-            {tenDayForecast.map((day, index) => (
-              <Box
-                key={index}
-                className='weather-info'
-                sx={{
-                  border: '1px solid #F6F6F6',
-                  padding: '10px',
-                  textAlign: 'center',
-                  borderBottom: '10px solid #fff ',
-                }}
-              >
-                <Typography variant='h6'>
-                  {new Date(day.dt * 1000).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </Typography>
-                <Box>
-                  <img
-                    src={`https://openweathermap.org/img/wn/${day.weather[0].icon}.png`}
-                    alt={day.weather[0].description}
-                  />
-                  <Typography variant='h6'>
-                    {Math.round(day.temp.day)}
-                    <sup className='deg'>°C</sup>
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant='body1'>
-                    {day.weather[0].description.toUpperCase()}
-                  </Typography>
-                  <Typography variant='body1'>
-                    Wind Speed: {day.wind_speed} m/s
-                  </Typography>
-                </Box>
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      )}
+      <DailyForecast tenDayForecast={tenDayForecast} />
     </Box>
   );
 };
